@@ -4,7 +4,9 @@ import numpy as np
 from scipy.optimize import fmin_l_bfgs_b
 import time
 import argparse
-
+from os import listdir
+from os.path import isfile, join
+import random
 from keras.applications import vgg16
 from keras import backend as K
 
@@ -26,10 +28,10 @@ parser.add_argument('--tv_weight', type=float, default=1.0, required=False,
 
 args = parser.parse_args()
 base_image_path = args.base_image_path
-style_reference_image_path = args.style_reference_image_path
+style_reference_image_path = random.choice([ join(args.style_reference_image_path, f) for f in listdir(args.style_reference_image_path) if isfile(join(args.style_reference_image_path, f))])
+print(style_reference_image_path)
 result_prefix = args.result_prefix
 iterations = args.iter
-
 # these are the weights of the different loss components
 total_variation_weight = args.tv_weight
 style_weight = args.style_weight

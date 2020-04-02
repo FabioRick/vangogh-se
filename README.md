@@ -5,6 +5,9 @@ Dataset retirado de:
 - https://www.kaggle.com/gfolego/vangogh
 - https://www.kaggle.com/delayedkarma/impressionist-classifier-data (Apenas van gogh)
 
+Depois foi apenas deixado as pinturas com as pinceladas fortes do Van Gogh, que são bem mais facilmente reconhecidas pelas pessoas.
+
 Código baseado em :
 
-- https://medium.com/mlreview/making-ai-art-with-style-transfer-using-keras-8bb5fa44b216
+- https://keras.io/examples/neural_style_transfer/
+
