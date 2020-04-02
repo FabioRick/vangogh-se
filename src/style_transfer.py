@@ -1,176 +1,245 @@
-# coding: utf-8
-
+from __future__ import print_function
+from keras.preprocessing.image import load_img, save_img, img_to_array
 import numpy as np
-import pandas as pd
-from PIL import Image
-from keras import backend as K
-from keras.preprocessing.image import load_img, img_to_array
-from keras.applications import VGG16
-from keras.applications.vgg16 import preprocess_input
-from keras.layers import Input
 from scipy.optimize import fmin_l_bfgs_b
 import time
 import argparse
-from os import listdir
-from os.path import isfile, join
-import random
 
-tf_session = K.get_session()
+from keras.applications import vgg16
+from keras import backend as K
+
+parser = argparse.ArgumentParser(description='Neural style transfer with Keras.')
+parser.add_argument('base_image_path', metavar='base', type=str,
+                    help='Path to the image to transform.')
+parser.add_argument('style_reference_image_path', metavar='ref', type=str,
+                    help='Path to the style reference image.')
+parser.add_argument('result_prefix', metavar='res_prefix', type=str,
+                    help='Prefix for the saved results.')
+parser.add_argument('--iter', type=int, default=10, required=False,
+                    help='Number of iterations to run.')
+parser.add_argument('--content_weight', type=float, default=0.025, required=False,
+                    help='Content weight.')
+parser.add_argument('--style_weight', type=float, default=1.0, required=False,
+                    help='Style weight.')
+parser.add_argument('--tv_weight', type=float, default=1.0, required=False,
+                    help='Total Variation weight.')
+
+args = parser.parse_args()
+base_image_path = args.base_image_path
+style_reference_image_path = args.style_reference_image_path
+result_prefix = args.result_prefix
+iterations = args.iter
+
+# these are the weights of the different loss components
+total_variation_weight = args.tv_weight
+style_weight = args.style_weight
+content_weight = args.content_weight
+
+# dimensions of the generated picture.
+width, height = load_img(base_image_path).size
+img_nrows = 400
+img_ncols = int(width * img_nrows / height)
+
+# util function to open, resize and format pictures into appropriate tensors
 
 
-##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
-## Define loss and helper functions
-##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
+def preprocess_image(image_path):
+    img = load_img(image_path, target_size=(img_nrows, img_ncols))
+    img = img_to_array(img)
+    img = np.expand_dims(img, axis=0)
+    img = vgg16.preprocess_input(img)
+    return img
 
-def get_feature_reps(x, layer_names, model):
-    featMatrices = []
-    for ln in layer_names:
-        selectedLayer = model.get_layer(ln)
-        featRaw = selectedLayer.output
-        featRawShape = K.shape(featRaw).eval(session=tf_session)
-        N_l = featRawShape[-1]
-        M_l = featRawShape[1]*featRawShape[2]
-        featMatrix = K.reshape(featRaw, (M_l, N_l))
-        featMatrix = K.transpose(featMatrix)
-        featMatrices.append(featMatrix)
-    return featMatrices
+# util function to convert a tensor into a valid image
 
-def get_content_loss(F, P):
-    cLoss = 0.5*K.sum(K.square(F - P))
-    return cLoss
 
-def get_Gram_matrix(F):
-    G = K.dot(F, K.transpose(F))
-    return G
-
-def get_style_loss(ws, Gs, As):
-    sLoss = K.variable(0.)
-    for w, G, A in zip(ws, Gs, As):
-        M_l = K.int_shape(G)[1]
-        N_l = K.int_shape(G)[0]
-        G_gram = get_Gram_matrix(G)
-        A_gram = get_Gram_matrix(A)
-        sLoss+= w*0.25*K.sum(K.square(G_gram - A_gram))/ (N_l**2 * M_l**2)
-    return sLoss
-
-def get_total_loss(gImPlaceholder, alpha=1.0, beta=10000.0):
-    F = get_feature_reps(gImPlaceholder, layer_names=[cLayerName], model=gModel)[0]
-    Gs = get_feature_reps(gImPlaceholder, layer_names=sLayerNames, model=gModel)
-    contentLoss = get_content_loss(F, P)
-    styleLoss = get_style_loss(ws, Gs, As)
-    totalLoss = alpha*contentLoss + beta*styleLoss
-    return totalLoss
-
-def calculate_loss(gImArr):
-    """
-    Calculate total loss using K.function
-    """
-    if gImArr.shape != (1, targetWidth, targetWidth, 3):
-        gImArr = gImArr.reshape((1, targetWidth, targetHeight, 3))
-    loss_fcn = K.function([gModel.input], [get_total_loss(gModel.input)])
-    return loss_fcn([gImArr])[0].astype('float64')
-
-def get_grad(gImArr):
-    """
-    Calculate the gradient of the loss function with respect to the generated image
-    """
-    if gImArr.shape != (1, targetWidth, targetHeight, 3):
-        gImArr = gImArr.reshape((1, targetWidth, targetHeight, 3))
-    grad_fcn = K.function([gModel.input], K.gradients(get_total_loss(gModel.input), [gModel.input]))
-    grad = grad_fcn([gImArr])[0].flatten().astype('float64')
-    return grad
-
-def postprocess_array(x):
-    # Zero-center by mean pixel
-    if x.shape != (targetWidth, targetHeight, 3):
-        x = x.reshape((targetWidth, targetHeight, 3))
-    x[..., 0] += 103.939
-    x[..., 1] += 116.779
-    x[..., 2] += 123.68
+def deprocess_image(x):
+    if K.image_data_format() == 'channels_first':
+        x = x.reshape((3, img_nrows, img_ncols))
+        x = x.transpose((1, 2, 0))
+    else:
+        x = x.reshape((img_nrows, img_ncols, 3))
+    # Remove zero-center by mean pixel
+    x[:, :, 0] += 103.939
+    x[:, :, 1] += 116.779
+    x[:, :, 2] += 123.68
     # 'BGR'->'RGB'
-    x = x[..., ::-1]
-    x = np.clip(x, 0, 255)
-    x = x.astype('uint8')
+    x = x[:, :, ::-1]
+    x = np.clip(x, 0, 255).astype('uint8')
     return x
 
-def reprocess_array(x):
-    x = np.expand_dims(x.astype('float64'), axis=0)
-    x = preprocess_input(x)
-    return x
+# get tensor representations of our images
+base_image = K.variable(preprocess_image(base_image_path))
+style_reference_image = K.variable(preprocess_image(style_reference_image_path))
 
-def save_original_size(x, target_size=cImageSizeOrig):
-    xIm = Image.fromarray(x)
-    xIm = xIm.resize(target_size)
-    xIm.save(genImOutputPath)
-    return xIm
+# this will contain our generated image
+if K.image_data_format() == 'channels_first':
+    combination_image = K.placeholder((1, 3, img_nrows, img_ncols))
+else:
+    combination_image = K.placeholder((1, img_nrows, img_ncols, 3))
 
-def get_random_style(sImDir)
-    onlyfiles = [f for f in listdir(sImDir) if isfile(join(sImDir, f))]
-    return random.choice(onlyfiles)
+# combine the 3 images into a single Keras tensor
+input_tensor = K.concatenate([base_image,
+                              style_reference_image,
+                              combination_image], axis=0)
 
-def main(cImPath, sImDir, genImOutputPath):
-    sImPath = get_random_style(sImDir)
-    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
-    ## Image processing
-    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
-    targetHeight = 512
-    targetWidth = 512
-    targetSize = (targetHeight, targetWidth)
+# build the vgg16 network with our 3 images as input
+# the model will be loaded with pre-trained ImageNet weights
+model = vgg16.VGG16(input_tensor=input_tensor,
+                    weights='imagenet', include_top=False)
+print('Model loaded.')
 
-    cImageOrig = Image.open(cImPath)
-    cImageSizeOrig = cImageOrig.size
-    cImage = load_img(path=cImPath, target_size=targetSize)
-    cImArr = img_to_array(cImage)
-    cImArr = K.variable(preprocess_input(np.expand_dims(cImArr, axis=0)), dtype='float32')
+# get the symbolic outputs of each "key" layer (we gave them unique names).
+outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
 
-    sImage = load_img(path=sImPath, target_size=targetSize)
-    sImArr = img_to_array(sImage)
-    sImArr = K.variable(preprocess_input(np.expand_dims(sImArr, axis=0)), dtype='float32')
+# compute the neural style loss
+# first we need to define 4 util functions
 
-    gIm0 = np.random.randint(256, size=(targetWidth, targetHeight, 3)).astype('float64')
-    gIm0 = preprocess_input(np.expand_dims(gIm0, axis=0))
+# the gram matrix of an image tensor (feature-wise outer product)
 
-    gImPlaceholder = K.placeholder(shape=(1, targetWidth, targetHeight, 3))
 
-    cModel = VGG16(include_top=False, weights='imagenet', input_tensor=cImArr)
-    sModel = VGG16(include_top=False, weights='imagenet', input_tensor=sImArr)
-    gModel = VGG16(include_top=False, weights='imagenet', input_tensor=gImPlaceholder)
-    cLayerName = 'block4_conv2'
-    sLayerNames = [
-                    'block1_conv1',
-                    'block2_conv1',
-                    'block3_conv1',
-                    'block4_conv1',
-                    #'block5_conv1'
-                    ]
+def gram_matrix(x):
+    assert K.ndim(x) == 3
+    if K.image_data_format() == 'channels_first':
+        features = K.batch_flatten(x)
+    else:
+        features = K.batch_flatten(K.permute_dimensions(x, (2, 0, 1)))
+    gram = K.dot(features, K.transpose(features))
+    return gram
 
-    P = get_feature_reps(x=cImArr, layer_names=[cLayerName], model=cModel)[0]
-    As = get_feature_reps(x=sImArr, layer_names=sLayerNames, model=sModel)
-    ws = np.ones(len(sLayerNames))/float(len(sLayerNames))
+# the "style loss" is designed to maintain
+# the style of the reference image in the generated image.
+# It is based on the gram matrices (which capture style) of
+# feature maps from the style reference image
+# and from the generated image
 
-    iterations = 600
-    x_val = gIm0.flatten()
-    start = time.time()
-    xopt, f_val, info= fmin_l_bfgs_b(calculate_loss, x_val, fprime=get_grad,
-                                maxiter=iterations, disp=True)
-    xOut = postprocess_array(xopt)
-    xIm = save_original_size(xOut, cImageSizeOrig)
-    print('Image saved')
-    end = time.time()
-    print('Time taken: {}'.format(end-start))
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Style Transfer Trainning')
-    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
-    ## Specify paths for 1) content image 2) style image and 3) generated image
-    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
+def style_loss(style, combination):
+    assert K.ndim(style) == 3
+    assert K.ndim(combination) == 3
+    S = gram_matrix(style)
+    C = gram_matrix(combination)
+    channels = 3
+    size = img_nrows * img_ncols
+    return K.sum(K.square(S - C)) / (4.0 * (channels ** 2) * (size ** 2))
 
-    parser.add_argument("-c", "--cimage", type=str, required=True,
-                        dest="content_image_path", help="Content image filename")
-    parser.add_argument("-s", "--simage", type=str, required=True,
-                        dest="style_image_dir", help="Style image directory")
-    parser.add_argument("-g", "--gimage", type=str, required=True,
-                        dest="generated_image_path", help="Generated image filename")
+# an auxiliary loss function
+# designed to maintain the "content" of the
+# base image in the generated image
 
-    args = parser.parse_args()
-    main(args.content_image_path, args.style_image_dir, args.generated_image_path)
+
+def content_loss(base, combination):
+    return K.sum(K.square(combination - base))
+
+# the 3rd loss function, total variation loss,
+# designed to keep the generated image locally coherent
+
+
+def total_variation_loss(x):
+    assert K.ndim(x) == 4
+    if K.image_data_format() == 'channels_first':
+        a = K.square(
+            x[:, :, :img_nrows - 1, :img_ncols - 1] - x[:, :, 1:, :img_ncols - 1])
+        b = K.square(
+            x[:, :, :img_nrows - 1, :img_ncols - 1] - x[:, :, :img_nrows - 1, 1:])
+    else:
+        a = K.square(
+            x[:, :img_nrows - 1, :img_ncols - 1, :] - x[:, 1:, :img_ncols - 1, :])
+        b = K.square(
+            x[:, :img_nrows - 1, :img_ncols - 1, :] - x[:, :img_nrows - 1, 1:, :])
+    return K.sum(K.pow(a + b, 1.25))
+
+
+# combine these loss functions into a single scalar
+loss = K.variable(0.0)
+layer_features = outputs_dict['block5_conv2']
+base_image_features = layer_features[0, :, :, :]
+combination_features = layer_features[2, :, :, :]
+loss = loss + content_weight * content_loss(base_image_features,
+                                            combination_features)
+
+feature_layers = ['block1_conv1', 'block2_conv1',
+                  'block3_conv1', 'block4_conv1',
+                  'block5_conv1']
+
+for layer_name in feature_layers:
+    layer_features = outputs_dict[layer_name]
+    style_reference_features = layer_features[1, :, :, :]
+    combination_features = layer_features[2, :, :, :]
+    sl = style_loss(style_reference_features, combination_features)
+    loss = loss + (style_weight / len(feature_layers)) * sl
+loss = loss + total_variation_weight * total_variation_loss(combination_image)
+
+# get the gradients of the generated image wrt the loss
+grads = K.gradients(loss, combination_image)
+
+outputs = [loss]
+if isinstance(grads, (list, tuple)):
+    outputs += grads
+else:
+    outputs.append(grads)
+
+f_outputs = K.function([combination_image], outputs)
+
+
+def eval_loss_and_grads(x):
+    if K.image_data_format() == 'channels_first':
+        x = x.reshape((1, 3, img_nrows, img_ncols))
+    else:
+        x = x.reshape((1, img_nrows, img_ncols, 3))
+    outs = f_outputs([x])
+    loss_value = outs[0]
+    if len(outs[1:]) == 1:
+        grad_values = outs[1].flatten().astype('float64')
+    else:
+        grad_values = np.array(outs[1:]).flatten().astype('float64')
+    return loss_value, grad_values
+
+# this Evaluator class makes it possible
+# to compute loss and gradients in one pass
+# while retrieving them via two separate functions,
+# "loss" and "grads". This is done because scipy.optimize
+# requires separate functions for loss and gradients,
+# but computing them separately would be inefficient.
+
+
+class Evaluator(object):
+
+    def __init__(self):
+        self.loss_value = None
+        self.grads_values = None
+
+    def loss(self, x):
+        assert self.loss_value is None
+        loss_value, grad_values = eval_loss_and_grads(x)
+        self.loss_value = loss_value
+        self.grad_values = grad_values
+        return self.loss_value
+
+    def grads(self, x):
+        assert self.loss_value is not None
+        grad_values = np.copy(self.grad_values)
+        self.loss_value = None
+        self.grad_values = None
+        return grad_values
+
+
+evaluator = Evaluator()
+
+# run scipy-based optimization (L-BFGS) over the pixels of the generated image
+# so as to minimize the neural style loss
+x = preprocess_image(base_image_path)
+
+for i in range(iterations):
+    print('Start of iteration', i)
+    start_time = time.time()
+    x, min_val, info = fmin_l_bfgs_b(evaluator.loss, x.flatten(),
+                                     fprime=evaluator.grads, maxfun=20)
+    print('Current loss value:', min_val)
+    # save current generated image
+    img = deprocess_image(x.copy())
+    fname = result_prefix + '_at_iteration_%d.png' % i
+    save_img(fname, img)
+    end_time = time.time()
+    print('Image saved as', fname)
+    print('Iteration %d completed in %ds' % (i, end_time - start_time))
