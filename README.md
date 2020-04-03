@@ -40,22 +40,7 @@ Neste script eu fiz umas pequenas modificações para tornar mais interessante a
 
 O que é um Jupyter Notebook? Não, não é um notebook em Júpiter ~~( o que seria bem interessante falar que estamos programando em Júpiter  )~~, mas um computador virtual que consegue ler códigos na linguagem python e escrever blocos de textos.
 
-Por que usar esse notebook? Bom, primeiro que ele é ótimo para demonstrações, dado que podemos ter blocos de texto ( em markdown e html ) e blocos de código para serem executados. Em segundo, porque pensando na utilização deste script que utiliza muito hardware de um computador e muitas vezes mais hardware que a maioria das pessoas tem disponível, usaremos os notebooks hosteados pelo google na plataforma [**Google Colab**](https://colab.research.google.com/). Falaremos sobre essa plataforma na próxima seção.
-
-## **Como executar o notebook**
-
-## Etapa 1
-
-Acesse o [**Google Colab**](https://colab.research.google.com/) usando uma conta do google.
-
-Após acessar, faça a procura do notebook pelo github ...
-
-Completar essa etapa com exemplos de imagem
-
-# Etapa 2
-
-mostrar como fazer a execução com exemplos de imagens
-
+Por que usar esse notebook? Bom, primeiro que ele é ótimo para demonstrações, dado que podemos ter blocos de texto ( em markdown e html ) e blocos de código para serem executados. Em segundo, porque pensando na utilização deste script que utiliza muito hardware de um computador e muitas vezes mais hardware que a maioria das pessoas tem disponível, usaremos os notebooks hosteados pelo google na plataforma [**Google Colab**](https://colab.research.google.com/).
 
 ## **Conclusão**
 
