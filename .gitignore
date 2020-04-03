@@ -1,6 +1,11 @@
 # dataset trainning
 dataset/images
 dataset/inputs
+dataset/*.zip
+dataset/*.7z
+dataset/*.tar*
+dataset/*.gz
+
 
 # Python
 trainning/results
