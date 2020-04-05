@@ -27,14 +27,11 @@ Logo, para fazer o script base para o notebook final foram usados os seguintes d
 Depois foi apenas deixado as pinturas com as pinceladas fortes do Van Gogh, que são bem mais facilmente reconhecidas pelas pessoas. Mas, nada impede de usar toda a gama de quadros e desenhos já feito pelo Van Gogh.
 
 ### **Código**
-- https://keras.io/examples/neural_style_transfer/
+- https://www.tensorflow.org/tutorials/generative/style_transfer
 
-Usamos a biblioteca keras, que é uma biblioteca muito conhecida para trabalhar com inteligência artificial. Para a nossa felicidade, na página de exemplos existia um código para transferência de estilo que, como o próprio nome diz, extrai o estilo de uma imagem ( no nosso caso as pinturas do Van Gogh) e aplica em uma outra imagem ( no nosso caso as fotos enviadas pelo usuário) e gera uma terceira imagem que é a mescla destas duas.
+Para a nossa felicidade, na página de exemplos existia um código para transferência de estilo com um modelo já treinado evitando, desta forma, que seja necessário o desenvolvimento da rede do zero.
 
-Não estou entrando nas explicações técnicas porque o público alvo em sua maioria não são desenvolvedores. O que não impede que as pessoas mais curiosas queiram entrar nesse maravilhoso mundo. Para essas pessoas disponibilizaremos alguns links sobre esta técnica para que consigam uma introdução mais aprofundada sobre o assunto.
-
-
-Neste script eu fiz umas pequenas modificações para tornar mais interessante a experiência do usuário, entre elas estão a seleção de uma imagem de estilo aleatória que permite que tenhamos para uma foto base diversas possibilidades a cada execução do código e a mudança dos modelos de VGG 19 para VGG 16 que permite um resultado mais rápido da rede porque diminuímos a quantidade de layers pelo qual a imagem passará.
+Neste script eu fiz umas pequenas modificações para tornar mais interessante a experiência do usuário, entre elas estão a seleção de uma imagem de estilo aleatória que permite que tenhamos para uma foto base diversas possibilidades a cada execução do código.
 
 ### **Jupyter Notebook**
 

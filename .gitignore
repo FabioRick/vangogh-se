@@ -1,6 +1,6 @@
 # dataset trainning
-dataset/images
-dataset/inputs
+dataset/images*
+dataset/inputs*
 dataset/*.zip
 dataset/*.7z
 dataset/*.tar*
